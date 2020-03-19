@@ -2,14 +2,16 @@ import os
 import keras
 from keras.preprocessing.image import ImageDataGenerator
 from keras.applications.vgg16 import VGG16
-from keras.layers import Conv2D,MaxPooling2D,Input,Flatten,Dense
-from keras.models import Model
-from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
+from keras.layers import Conv2D,MaxPooling2D,Input,Flatten,Dense,Activation,Dropout
+from keras.models import Model,Sequential
+from keras.callbacks import ModelCheckpoint, EarlyStopping, ReduceLROnPlateau,TensorBoard
 from keras.optimizers import  Adam
+from keras import regularizers
+from keras.regularizers import l1
 
 
 num_classes = 5
-batch_size = 16
+batch_size = 8
 
 train_data_dir = 'data/train'
 train_datagen = ImageDataGenerator(
@@ -23,37 +25,69 @@ fill_mode='nearest'
 
 train_generator = train_datagen.flow_from_directory(
 	train_data_dir,
-	target_size=(224,224),
+	target_size=(48,48),
 	batch_size=batch_size,
 	class_mode='categorical'
 )
+model = Sequential()
 
-model=VGG16(weights=None,include_top=False)
-print(model.summary())
-input_frame = Input(shape=(720,1280,3),name='image_input')
+model.add(Conv2D(32, kernel_size=(3, 3), activation='relu',kernel_regularizer=regularizers.l2(0.0001),input_shape=(48,48,3)))
+# model.add(BatchNormalization())
 
-output_model = model(input_frame)
-# x = Flatten(name='flatten')(output_model)
-# x = Dense(4096, activation='relu', name='fc1')(x)
-# x = Dense(4096, activation='relu', name='fc2')(x)
-x = Dense(5, activation='softmax', name='predictions')(output_model)
-my_model = Model(input=input_frame,output=x)
+model.add(Conv2D(64, kernel_size=(3, 3), activation='relu',kernel_regularizer=regularizers.l2(0.0001)))
+# model.add(BatchNormalization())
+model.add(MaxPooling2D(pool_size=(2, 2)))
 
-my_model.summary()
+model.add(Conv2D(128, kernel_size=(3, 3), activation='relu', kernel_regularizer=regularizers.l2(0.0001)))
+# model.add(BatchNormalization())
+model.add(MaxPooling2D(pool_size=(2, 2)))
 
-filepath = os.path.join("./emotion_detector_models/model_v6_{epoch}.hdf5")
+model.add(Conv2D(128, kernel_size=(3, 3), activation='relu', kernel_regularizer=regularizers.l2(0.0001)))
+# model.add(BatchNormalization())
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+model.add(Conv2D(7, kernel_size=(1, 1), activation='relu', kernel_regularizer=regularizers.l2(0.0001)))
+# # model.add(BatchNormalization())
+
+model.add(Conv2D(7, kernel_size=(4, 4), activation='relu', kernel_regularizer=regularizers.l2(0.0001)))
+# model.add(BatchNormalization())
+
+model.add(Flatten())
+#model.add(Dense(1024,activation='relu'))
+#model.add(Dropout(0.5))
+model.add(Dense(5,activation='softmax'))
+#model.add(Activation("softmax"))
+
+model.summary()
+
+# model=VGG16(weights=None,classes=5,input_shape=(720,1280,3))
+# print(model.summary())
+model.compile(optimizer="adam",loss="categorical_crossentropy")
+
+
+
+# # output_model = model(input_frame)
+# # # x = Flatten(name='flatten')(output_model)
+# # # x = Dense(4096, activation='relu', name='fc1')(x)
+# # # x = Dense(4096, activation='relu', name='fc2')(x)
+# # x = Dense(5, activation='softmax', name='predictions')(output_model)
+# # my_model = Model(input=input_frame,output=x)
+
+# # my_model.summary()
+
+filepath = os.path.join("./model/model_v6.hdf5")
 checkpoint = keras.callbacks.ModelCheckpoint(filepath,
-                                             monitor='val_acc',
+                                             monitor='loss',
                                              verbose=1,
                                              save_best_only=True,
-                                             mode='max')
-callbacks = [checkpoint]
-my_model.compile(loss='categorical_crossentropy',
-	optimizer=Adam(lr=0.0001,decay=1e-6),metrics=['accuracy'])
+                                             mode='min')
+tbCallback = keras.callbacks.TensorBoard(log_dir='./Graph', histogram_freq=0,  
+          write_graph=True, write_images=True)
+callbacks = [checkpoint,tbCallback]
 
 nb_train_samples = 298
 epochs = 150
-model_info  = my_model.fit_generator(
+model_info  = model.fit_generator(
 	train_generator,
 	steps_per_epoch=nb_train_samples//batch_size,
 	epochs = epochs,
